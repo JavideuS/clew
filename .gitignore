@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+build/
+install/
+log/
+.venv/
+.pytest_cache/
+.ruff_cache/
+.benchmarks/
+
+# Personal design notes -- references internal/proprietary project
+# context not meant for this repo's public history. Kept locally only.
+docs/DESIGN_NOTES.md

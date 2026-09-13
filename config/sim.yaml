@@ -1,0 +1,5 @@
+- id: ranger_sim1
+  start: { x: 5.0, y: 5.0, theta: 0.0 }
+  goal: { x: 2.2, y: 2.2, theta: 1.57 }
+  robot_radius: 0.35
+  priority: 1.0

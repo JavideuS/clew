@@ -1,0 +1,42 @@
+# Example ROS2 parameters override file for fleet_coordinator's
+# coordinator_node -- pass via `params_file:=` to coordinator.launch.py.
+#
+# Covers everything declare_dataclass_parameters exposes (see
+# coordinator_node.py) that isn't already its own launch argument
+# (mission_file, use_sim_time, spooky.map_id, initial_pose.publish --
+# those four are common enough to vary run-to-run that they get a
+# dedicated launch argument each instead of living here).
+#
+# Empty by default -- override only what you actually need to change,
+# the rest stays at the defaults declared in code. To use one of the
+# examples below, move it under ros__parameters (uncommented); every key
+# is optional and independent of the others.
+#
+#   spooky.base_url: "http://localhost:8000"
+#   spooky.solver_name: "classic.cbs"
+#   spooky.timeout_s: 30.0
+#   spooky.clearance_enabled: true
+#
+#   ordering.clearance_factor: 1.0
+#   ordering.conflict_step_window: 5
+#   ordering.structural_overhang_factor: 1.2
+#
+#   stall.ticks: 16
+#   stall.pos_eps_m: 0.15
+#   deadlock.proximity_factor: 1.25
+#
+#   convergence.pos_tol_m: 0.35
+#   convergence.yaw_tol_rad: 0.25
+#   convergence.timeout_s: 90.0
+#
+#   dispatch.max_consecutive_aborts: 5
+#   dispatch.max_smoothing_duration_s: 2.0
+#   dispatch.action_name_template: "/{robot_id}/follow_path"
+#
+#   recovery.max_recovery_attempts: 2
+#   recovery.sidestep_timeout_s: 5.0
+#
+#   initial_pose.tf_topic_template: "/{robot_id}/tf"
+#   initial_pose.base_frame_template: "base_link"
+fleet_coordinator:
+  ros__parameters: {}

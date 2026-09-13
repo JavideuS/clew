@@ -1,0 +1,13 @@
+- id: ranger_sim1
+  start: { x: 0.0, y: 0.0, theta: 0.0 }
+  goal: { x: 5.0, y: 5.0, theta: 0.0 }
+  robot_radius: 0.35
+  inflation: 0.2
+  priority: 1.0
+
+- id: ranger_sim2
+  start: { x: 5.0, y: 5.0, theta: 0.0 }
+  goal: { x: 0.0, y: 0.0, theta: 0.0 }
+  robot_radius: 0.35
+  inflation: 0.2
+  priority: 1.0

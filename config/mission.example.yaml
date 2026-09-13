@@ -1,0 +1,19 @@
+# Example mission file -- a YAML list of robot specs, loaded via
+# fleet_coordinator.robot.Fleet.from_yaml().
+
+# Each entry's keys match
+# - Robot's fields (see robot.py);
+# - start/goal are {x, y[, theta]} in metres /radians, world frame.
+# Fields other than id/start/goal are optional and fall back to
+# Robot's defaults.
+
+- id: ranger_1
+  start: { x: 0.0, y: 0.0, theta: 0.0 }
+  goal: { x: 4.5, y: 2.0, theta: 1.57 }
+  robot_radius: 0.35
+  priority: 1.0
+
+- id: ranger_2
+  start: { x: 1.0, y: 0.0, theta: 0.0 }
+  goal: { x: 4.5, y: -2.0 }
+  robot_radius: 0.35
