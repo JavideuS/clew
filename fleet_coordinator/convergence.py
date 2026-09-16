@@ -25,7 +25,7 @@ from tf2_msgs.msg import TFMessage
 from tf2_ros import TransformException
 from tf2_ros.buffer import Buffer
 
-from .geometry import quat_to_yaw, yaw_to_quat_zw
+from .geometry import angle_diff, distance, quat_to_yaw, yaw_to_quat_zw
 from .monitoring import (
     ConvergenceConfig,
     convergence_offset,
@@ -57,30 +57,40 @@ def _initial_pose_covariance() -> list[float]:
 
 
 class ConvergenceGate:
-    """Seed each robot's AMCL with its mission-declared start (standing
-    in for RViz's manual "2D Pose Estimate" click), then gate on every
-    robot's localization actually converging on that seed -- see
-    ConvergenceConfig for what "converged" means and why it's checked in
-    TF rather than via amcl_pose.
+    """Seed each robot's AMCL with its mission-declared start, then gate on every
+    robot's localization actually converging on that seed.
 
     The mission's declared start is only a trustworthy seed when it's the
-    same fact as the robot's actual position by construction -- true in
-    sim (you control both), NOT true on a real robot, where the declared
-    start is an assumption, not a measurement ("Planning never reads the
-    robot's actual pose" finding -- same category of bug, different
-    symptom: there it broke MPC's trajectory reference; here, left
-    unpublished, it breaks nav2's local-costmap path pruning instead).
-    Don't use this against real hardware unless the declared start is
-    independently guaranteed accurate (e.g. robots placed at known
-    docks) -- otherwise wire a real pose source (an operator
-    confirmation, a UI click on the map, ...) in before start() instead
-    of trusting the mission file.
+    same fact as the robot's actual position by construction. Not recommended to
+    use on real hardware if you are not certain about initial pose.
 
     Call start() once; on_converged() fires exactly once, either because
     every robot converged or because cfg.timeout_s elapsed -- at which
     point this gate destroys its own timer, TF subscriptions, and seed
     publishers (nothing here is needed again for the rest of the node's
     life) before calling on_converged().
+
+    "Converged" means map->base_frame has stopped moving between polls
+    (cfg.settle_pos_tol_m/settle_yaw_tol_rad), NOT that it landed on the
+    declared seed. A wrong-but-plausible declared start is a kick-start
+    for AMCL's particle filter, not a promise -- real sensor data will
+    correctly scan-match away from it if it's off, the same as it would
+    for a slightly-off RViz "2D Pose Estimate" click, and gating on
+    "matches the declared value" would just time out forever in that
+    case.
+
+    Once settled, if that's still farther than pos_tol_m/yaw_tol_rad from
+    the declared start, this re-seeds at an extrapolated point (assuming
+    AMCL's pull here is roughly constant nearby) and tries again, up to
+    cfg.max_correction_rounds times, keeping whichever round landed
+    closest. It is an attempt to compensate for AMCL's drift back toward the
+    operator's actually-known position, not a guarantee (a target that's
+    genuinely implausible to the map/sensors won't converge no matter how
+    many rounds are spent chasing it).
+
+    settled_poses exposes each robot's resulting map->base_frame pose,
+    for the caller to plan from instead of the possibly-stale mission-
+    file start outright.
     """
 
     def __init__(
@@ -117,6 +127,19 @@ class ConvergenceGate:
         self._base_frames = {}
         self._converged: set[str] = set()
         self._convergence_streak = {robot.id: 0 for robot in fleet}
+        # Settle-detection state: last poll's (x, y, yaw) per robot (the
+        # reference a new sample is compared against for "did it move")
+        # and each robot's pose at the moment it stopped moving, once
+        # converged -> see settled_poses.
+        self._last_stable_ref: dict[str, tuple[float, float, float]] = {}
+        self._settled_poses: dict[str, tuple[float, float, float]] = {}
+        # Offset-compensation state (see _poll's converged branch):
+        # correction rounds used so far per robot, and the closest-to-
+        # declared settle observed across all of them, kept in case
+        # max_correction_rounds is exhausted before landing in tolerance.
+        self._correction_round: dict[str, int] = {robot.id: 0 for robot in fleet}
+        self._best_settled: dict[str, tuple[float, float, float]] = {}
+        self._best_settled_dist: dict[str, float] = {}
         self._poll_count = 0
         self._done = False
         # Recent (TF pose - seeded start) samples per robot, for the
@@ -187,6 +210,18 @@ class ConvergenceGate:
         msg.header.stamp = self._node.get_clock().now().to_msg()
         self._seed_publishers[robot_id].publish(msg)
 
+    def _reseed_at(self, robot_id: str, x: float, y: float, yaw: float) -> None:
+        """Overwrite this robot's seed message's pose in place (the
+        covariance and everything else about it stays what start() set
+        up) and publish it -- used for offset-compensation rounds, where
+        the seed itself needs to move, not just be re-sent unchanged.
+        """
+        msg = self._seed_msgs[robot_id]
+        msg.pose.pose.position.x = x
+        msg.pose.pose.position.y = y
+        msg.pose.pose.orientation.z, msg.pose.pose.orientation.w = yaw_to_quat_zw(yaw)
+        self._publish_seed(robot_id)
+
     def _ingest_tf(self, msg: TFMessage, buf: Buffer, *, static: bool) -> None:
         setter = buf.set_transform_static if static else buf.set_transform
         for transform in msg.transforms:
@@ -221,11 +256,7 @@ class ConvergenceGate:
                 )
 
             if converged:
-                self._converged.add(robot.id)
-                self._node.get_logger().info(
-                    f"coordinator_node: {robot.id}'s localization converged on "
-                    "its seeded start"
-                )
+                self._on_settled(robot, cfg)
 
         if all(robot.id in self._converged for robot in self._fleet):
             self._node.get_logger().info(
@@ -251,16 +282,17 @@ class ConvergenceGate:
 
     def _blocker(self, robot) -> str | None:
         """None once this robot's map -> base_frame transform exists and
-        places it within tolerance of its declared start pose. Otherwise a
-        short string naming what's still wrong, for the throttled
-        diagnostic log in _poll. Caller requires None to hold
+        has stopped moving between polls (within cfg.settle_pos_tol_m /
+        cfg.settle_yaw_tol_rad of the previous poll's reading).
+        Otherwise a short string naming what's still wrong, for the
+        throttled diagnostic log in _poll. Caller requires None to hold
         cfg.stable_polls polls in a row before trusting it.
 
         No transform-age check: AMCL republishes map->odom continuously
         (future-dated by transform_tolerance), so a stale *value* still
         carries a fresh stamp -- and comparing the stamp against this
         node's clock is a footgun when sim time and wall time disagree.
-        The position check below is the real gate; a genuinely absent
+        The movement check below is the real gate; a genuinely absent
         tree surfaces as the lookup raising instead.
         """
         buf = self._tf_buffers[robot.id]
@@ -277,16 +309,106 @@ class ConvergenceGate:
         t = tf.transform.translation
         q = tf.transform.rotation
         yaw = quat_to_yaw(q.x, q.y, q.z, q.w)
-        dx, dy, dyaw, blocker = convergence_offset(
+
+        # Declared-vs-actual offset: diagnostics only now (the timeout
+        # report's systematic-frame-error check), not the gate itself.
+        # Signed samples (not abs) -- that report needs the mean
+        # direction to tell a systematic offset from scatter.
+        dx, dy, dyaw, _ = convergence_offset(
             (t.x, t.y),
             yaw,
             (robot.start.x, robot.start.y, robot.start.theta),
             self._cfg,
         )
-        # Signed samples (not abs) -- the timeout report needs the mean
-        # direction to tell a systematic offset from scatter.
         self._offset_history[robot.id].append((dx, dy, dyaw))
-        return blocker
+
+        prev = self._last_stable_ref.get(robot.id)
+        self._last_stable_ref[robot.id] = (t.x, t.y, yaw)
+        if prev is None:
+            return "waiting for a second reading to check whether it's settled"
+
+        step_dist = distance((t.x, t.y), (prev[0], prev[1]))
+        step_dyaw = angle_diff(yaw, prev[2])
+        if (
+            step_dist > self._cfg.settle_pos_tol_m
+            or abs(step_dyaw) > self._cfg.settle_yaw_tol_rad
+        ):
+            return (
+                f"still settling -- moved {step_dist:.2f} m / "
+                f"{abs(step_dyaw):.2f} rad since the last poll "
+                f"(tol {self._cfg.settle_pos_tol_m} m / "
+                f"{self._cfg.settle_yaw_tol_rad} rad)"
+            )
+        return None
+
+    def _on_settled(self, robot, cfg: ConvergenceConfig) -> None:
+        """Called once this robot's map->base_frame has just reached
+        cfg.stable_polls polls without moving (see _blocker). Either
+        finalizes it as converged (declared_settled_poses), or -- if
+        still farther than pos_tol_m/yaw_tol_rad from the declared start
+        and correction rounds remain -- re-seeds at an extrapolated
+        point and keeps polling; see ConvergenceConfig.max_correction_rounds.
+        """
+        settled = self._last_stable_ref[robot.id]
+        target = (robot.start.x, robot.start.y, robot.start.theta)
+        off_dist = distance(settled[:2], target[:2])
+        off_yaw = abs(angle_diff(settled[2], target[2]))
+
+        if off_dist < self._best_settled_dist.get(robot.id, math.inf):
+            self._best_settled_dist[robot.id] = off_dist
+            self._best_settled[robot.id] = settled
+
+        close_enough = off_dist <= cfg.pos_tol_m and off_yaw <= cfg.yaw_tol_rad
+        round_ = self._correction_round[robot.id]
+        if close_enough or round_ >= cfg.max_correction_rounds:
+            self._converged.add(robot.id)
+            self._settled_poses[robot.id] = self._best_settled[robot.id]
+            bx, by, _ = self._settled_poses[robot.id]
+            if close_enough:
+                self._node.get_logger().info(
+                    f"coordinator_node: {robot.id}'s localization settled "
+                    f"at ({bx:.2f}, {by:.2f}), within tolerance of its "
+                    "declared start"
+                )
+            else:
+                self._node.get_logger().warning(
+                    f"coordinator_node: {robot.id}'s localization never "
+                    f"settled within tolerance of its declared start after "
+                    f"{round_} correction round(s) -- using its closest "
+                    f"settle ({bx:.2f}, {by:.2f}), "
+                    f"{self._best_settled_dist[robot.id]:.2f} m off"
+                )
+            return
+
+        self._correction_round[robot.id] = round_ + 1
+        comp_x = target[0] - (settled[0] - target[0])
+        comp_y = target[1] - (settled[1] - target[1])
+        comp_yaw = target[2] - angle_diff(settled[2], target[2])
+        self._node.get_logger().info(
+            f"coordinator_node: {robot.id} settled {off_dist:.2f} m from "
+            f"its declared start -- re-seeding at ({comp_x:.2f}, "
+            f"{comp_y:.2f}) to compensate (round {round_ + 1}/"
+            f"{cfg.max_correction_rounds})"
+        )
+        self._reseed_at(robot.id, comp_x, comp_y, comp_yaw)
+        # Fresh settle-detection state: the next poll's _blocker must judge
+        # movement against the new seed's reaction, not the old one's.
+        self._convergence_streak[robot.id] = 0
+        self._last_stable_ref.pop(robot.id, None)
+
+    @property
+    def settled_poses(self) -> dict[str, tuple[float, float, float]]:
+        """(x, y, yaw) per robot that reached settled (map->base_frame
+        stopped moving) and either landed within cfg.pos_tol_m/
+        cfg.yaw_tol_rad of its declared start, or exhausted
+        cfg.max_correction_rounds trying to -- the closest one of those
+        rounds wins either way. The caller's best available estimate of
+        where that robot actually is, to plan from instead of the
+        declared mission-file start outright. Robots that never settled
+        at all (timed out) are absent; the caller should keep using their
+        declared start for those.
+        """
+        return dict(self._settled_poses)
 
     def _report_offset_diagnostics(self, unconverged: list[str]) -> None:
         """On convergence timeout, summarise each stuck robot's mean

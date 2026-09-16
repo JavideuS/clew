@@ -182,6 +182,28 @@ class CoordinatorNode(Node):
         # is a blocking Spooky call (~2 s) that touches neither TF nor the
         # local costmap -- any remaining costmap settling overlaps it for
         # free. Dispatch only starts on the first _dispatch_tick after this.
+
+        # Plan from where each robot actually settled, not the mission
+        # file's declared start, so a robot that AMCL correctly
+        # scan-matched away from an inaccurate declared start would
+        # otherwise plan from a point nav2 will immediately disagree with.
+        # Robots that never settled (timed out) keep their declared start
+        # -- see _plan_fleet() -> planning anyway with what we have.
+        gate = getattr(self, "_convergence_gate", None)
+        if gate is not None:
+            for robot_id, (x, y, yaw) in gate.settled_poses.items():
+                robot = self.fleet.robots[robot_id]
+                declared = robot.start
+                off = distance((x, y), (declared.x, declared.y))
+                if off > self._convergence_cfg.pos_tol_m:
+                    self.get_logger().warning(
+                        f"coordinator_node: {robot_id}'s declared start "
+                        f"({declared.x}, {declared.y}) was {off:.2f} m from "
+                        f"where it actually settled ({x:.2f}, {y:.2f}) -- "
+                        "planning from the settled pose instead"
+                    )
+                robot.start = Pose2D(x, y, yaw)
+
         self._plan_fleet()
 
     def _plan_fleet(self) -> None:
@@ -200,6 +222,9 @@ class CoordinatorNode(Node):
         self._effective_radii = effective_radii
         self._reported_deadlocks: set[frozenset[str]] = set()
         self._recovery_halted = False
+        # Set once every dispatcher reports is_complete() -- see
+        # _dispatch_tick.
+        self._mission_done = False
         # Per-robot stall-detection anchor -- see monitoring.stall_anchor_update.
         # Cleared on every (re)plan.
         self._stall_anchor: dict[str, StallAnchor] = {}
@@ -274,6 +299,27 @@ class CoordinatorNode(Node):
                 self.release_schedule.released_path(robot_id)
             )
         self._check_fleet_stall()
+        self._check_mission_done()
+
+    def _check_mission_done(self) -> None:
+        """Shut this node down once every robot has actually finished its
+        full path -- not just reached the end of its currently-released
+        prefix (RobotDispatcher.is_complete() already tells those apart).
+
+        Meant for it close once mission finishes. Allows better integration
+        and usage for planning iteratively on real time. Meant for argOS world
+        orchestration and future task-allocation work.
+        """
+        if self._mission_done or not self.dispatchers:
+            return
+        if not all(d.is_complete() for d in self.dispatchers.values()):
+            return
+        self._mission_done = True
+        self.get_logger().info(
+            "coordinator_node: mission complete -- every robot reached its "
+            "goal, shutting down"
+        )
+        rclpy.shutdown()
 
     def _check_fleet_stall(self) -> None:
         """Catch a deadlock that never produces a controller abort: robots
@@ -515,7 +561,9 @@ def main(args: list[str] | None = None) -> None:
         rclpy.spin(node)
     finally:
         node.destroy_node()
-        rclpy.shutdown()
+        # _check_mission_done() can already have called rclpy.shutdown() itself
+        if rclpy.ok():
+            rclpy.shutdown()
 
 
 if __name__ == "__main__":

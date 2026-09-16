@@ -181,6 +181,13 @@ class RobotDispatcher:
         # every retry reset the abort counter).
         self._resend_pending = False
         self._sent_length = 0
+        # Set alongside _sent_length each publish_released_path -- whether
+        # *that* send covered the whole path, not just a released prefix.
+        # _on_follow_path_result checks it on SUCCEEDED to know whether this
+        # robot has actually finished its mission, not just one segment of
+        # it (coordinator_node polls is_complete() fleet-wide for that).
+        self._sent_is_final = False
+        self._completed = False
         self._goal_handle = None
         # Recovery hooks. While paused, publish_released_path is a no-op (the
         # release schedule keeps advancing but nothing is sent). A one-off
@@ -276,6 +283,7 @@ class RobotDispatcher:
         # (an under-cap abort retries via _resend_pending, not by rewinding
         # it), so an abort counter survives across retries of one prefix.
         self._sent_length = max(self._sent_length, len(released_path))
+        self._sent_is_final = is_final_release
         self._resend_pending = False
 
         self._smooth_then_follow(raw_path_msg, oneoff=False)
@@ -453,6 +461,8 @@ class RobotDispatcher:
         if status == GoalStatus.STATUS_SUCCEEDED:
             self._consecutive_aborts = 0
             self._stuck = False
+            if self._sent_is_final:
+                self._completed = True
             self._node.get_logger().info(
                 f"dispatch: {self._robot_id}'s FollowPath goal #{seq} "
                 "succeeded (reached the end of the released prefix)"
@@ -516,6 +526,14 @@ class RobotDispatcher:
         """This robot's complete current path (start .. goal)."""
         return list(self._full_path)
 
+    def is_complete(self) -> bool:
+        """True once a FollowPath goal covering this robot's *entire*
+        current path (not just a released prefix) has succeeded. Cleared
+        by update_path -- a recovery replan means there's a new path to
+        finish, so a stale True here would let coordinator_node think the
+        mission was done when a robot had actually just been re-routed."""
+        return self._completed
+
     def cancel(self) -> None:
         """Cancel this robot's outstanding goal, if any."""
         if self._goal_handle is not None:
@@ -558,6 +576,8 @@ class RobotDispatcher:
         """
         self._full_path = new_full_path
         self._sent_length = 0
+        self._sent_is_final = False
+        self._completed = False
         self._resend_pending = False
         self._stuck = False
         self._consecutive_aborts = 0

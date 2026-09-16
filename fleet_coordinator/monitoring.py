@@ -138,7 +138,26 @@ class ConvergenceConfig:
     poll_period_s: float = 0.5
     pos_tol_m: float = 0.35
     yaw_tol_rad: float = 0.25
+    # Real-hardware gate: converged means map->base_frame has *stopped
+    # moving* for stable_polls in a row, not that it matches the declared
+    # seed (see ConvergenceGate's docstring -- on real hardware the
+    # declared start is a kick-start hint, not a promise, and AMCL
+    # scan-matching a couple meters away from an inaccurate one is
+    # correct behavior, not a bug). These two are deliberately tighter
+    # than pos_tol_m/yaw_tol_rad, which stay in use for the declared-vs-
+    # actual diagnostic in _report_offset_diagnostics.
+    settle_pos_tol_m: float = 0.05
+    settle_yaw_tol_rad: float = 0.05
     stable_polls: int = 4  # must hold within tolerance this many polls in a row
+    # Once settled, if it's still farther than pos_tol_m/yaw_tol_rad from
+    # the declared start, re-seed at start - (settled - start) -- assumes
+    # AMCL's local pull is roughly constant nearby, so aiming this far
+    # past the declared point, opposite the observed drift, lands closer
+    # to it next time -- and re-settle, up to this many times. The
+    # closest-to-declared settle seen across all rounds is what's used
+    # even if none ever lands inside tolerance (0 disables: first settle
+    # wins, whatever the offset).
+    max_correction_rounds: int = 3
     timeout_s: float = 90.0  # backstop: past this, plan anyway but loudly
     log_every_n_polls: int = 4  # throttle the "still not converged" line
     offset_history_len: int = (
