@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from fleet_coordinator.ordering import ReleaseSchedule
-from fleet_coordinator.spooky_client import RobotPlan
+from clew.ordering import ReleaseSchedule
+from clew.spooky_client import RobotPlan
 
 
 def _plan(robot_id: str, path: list[tuple[float, float]]) -> RobotPlan:

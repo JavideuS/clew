@@ -7,8 +7,8 @@ import math
 
 import pytest
 
-from fleet_coordinator.ordering import StructuralBottleneck
-from fleet_coordinator.recovery import (
+from clew.ordering import StructuralBottleneck
+from clew.recovery import (
     RecoveryHooks,
     RecoveryManager,
     forward_advance_point,

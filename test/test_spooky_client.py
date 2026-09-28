@@ -10,8 +10,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from fleet_coordinator.robot import CoordinateFormat, Fleet
-from fleet_coordinator.spooky_client import SpookyPlanError, SpookySettings, plan_fleet
+from clew.robot import CoordinateFormat, Fleet
+from clew.spooky_client import SpookyPlanError, SpookySettings, plan_fleet
 
 
 @pytest.fixture
@@ -27,7 +27,7 @@ def two_robot_fleet() -> Fleet:
 def _mock_post(response_json: dict, status_code: int = 200):
     resp = MagicMock(status_code=status_code, text=str(response_json))
     resp.json.return_value = response_json
-    return patch("fleet_coordinator.spooky_client.requests.post", return_value=resp)
+    return patch("clew.spooky_client.requests.post", return_value=resp)
 
 
 def test_plan_fleet_empty_fleet_raises():
@@ -70,7 +70,7 @@ def test_plan_fleet_sends_clearance_enabled(two_robot_fleet):
 
 def test_plan_fleet_preserves_consecutive_duplicates(two_robot_fleet):
     # a robot "waiting" at a cell -- must survive intact for ordering.py,
-    # unlike control-circuit's Go geometry layer which dedupes this.
+    # which relies on the repetition as its "wait here" signal.
     response = {
         "paths": [
             {"robot_id": "ranger_1", "path": [[0, 0], [1, 0], [1, 0], [4.5, 2.0]], "coordinate_format": "world"},
@@ -93,7 +93,7 @@ def test_plan_fleet_connection_failure(two_robot_fleet):
     import requests
 
     with patch(
-        "fleet_coordinator.spooky_client.requests.post",
+        "clew.spooky_client.requests.post",
         side_effect=requests.ConnectionError("refused"),
     ):
         with pytest.raises(SpookyPlanError, match="POST .* failed"):

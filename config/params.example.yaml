@@ -1,4 +1,4 @@
-# Example ROS2 parameters override file for fleet_coordinator's
+# Example ROS2 parameters override file for clew's
 # coordinator_node -- pass via `params_file:=` to coordinator.launch.py.
 #
 # Covers everything declare_dataclass_parameters exposes (see
@@ -38,5 +38,5 @@
 #
 #   initial_pose.tf_topic_template: "/{robot_id}/tf"
 #   initial_pose.base_frame_template: "base_link"
-fleet_coordinator:
+clew:
   ros__parameters: {}

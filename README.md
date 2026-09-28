@@ -1,13 +1,26 @@
-# fleet-coordinator
+# clew
 
-A decoupled multi-robot fleet coordinator for ROS2/nav2. Calls Spooky (a
-quantum/classical global multi-robot path planner, see **Prerequisites**
-below) once for the whole fleet, turns its symbolic-step ordering into a
-conflict-zone release schedule per robot, and hands each robot's
-currently-released waypoints straight to nav2's own `FollowPath` — no
-per-tick control, no MPC, no custom local planner. Each robot keeps its
-own AMCL/costmap stack untouched; this package only decides *when* a
-robot is allowed to drive the next stretch of its own path.
+*The thread through the maze.* A decoupled multi-robot fleet coordinator
+for ROS2/nav2. Calls
+[Spooky](https://github.com/JavideuS/Spooky) (a quantum/classical global
+multi-robot path planner) once for the whole fleet, turns its
+symbolic-step ordering into a conflict-zone release schedule per robot,
+and hands each robot's currently-released waypoints straight to nav2's
+own `FollowPath` — no per-tick control, no MPC, no custom local
+planner. Each robot keeps its own AMCL/costmap stack untouched; this
+package only decides *when* a robot is allowed to drive the next stretch
+of its own path.
+
+Tested with nav2 both in Isaac Sim and on a fleet of three real AgileX
+Ranger Mini robots.
+
+> **Why "clew"?** In the myth, Ariadne gives Theseus a clew — a ball of
+> thread — to find his way through the Minotaur's labyrinth (it is also
+> where the English word *clue* comes from). This package plays the same
+> role: it doesn't choose the path, it lets each robot follow its own,
+> one released stretch at a time, safely through a maze shared with the
+> rest of the fleet. It is also one letter away from *crew*: a group
+> working together in sync, which is exactly what a coordinated fleet is.
 
 ## Architecture
 
@@ -56,8 +69,8 @@ localization/mapping, or joint/formation planning.
 ## Package layout
 
 ```
-fleet-coordinator/
-├── fleet_coordinator/
+clew/
+├── clew/
 │   ├── robot.py             # Robot/Pose2D/Fleet -- mission intake
 │   ├── spooky_client.py     # SpookySettings + POST /v1/plan client
 │   ├── geometry.py          # shared 2D math (distance, heading, quaternion<->yaw)
@@ -87,24 +100,35 @@ wrappers around that pure logic.
   the usual per-robot AMCL + `controller_server`/`smoother_server` stack
   already running for each robot — this package coordinates them, it
   doesn't launch or configure them.
-- A reachable Spooky server (`spooky.base_url`, default
-  `http://localhost:8000`) exposing `POST /v1/plan`.
+- A reachable [Spooky](https://github.com/JavideuS/Spooky) server
+  (`spooky.base_url`, default `http://localhost:8000`) exposing
+  `POST /v1/plan`. Spooky is the global planner this package is built and
+  tested against; see its README for running the service (Docker or
+  local).
+
+## Related projects
+
+- [Spooky](https://github.com/JavideuS/Spooky) — the global multi-robot
+  planner (QUBO / ILP / CBS formulations behind one HTTP API).
+- [argOS](https://github.com/JavideuS/argOS) — browser UI on top of this
+  stack: live map, robot poses, and creating/launching fleet missions
+  over ROS2.
 
 ## Install
 
 ```bash
 cd ~/your_ros2_ws/src
-git clone <this repo> fleet_coordinator
+git clone https://github.com/JavideuS/clew.git
 cd ~/your_ros2_ws
 rosdep install --from-paths src --ignore-src -r -y
-colcon build --symlink-install --packages-select fleet_coordinator
+colcon build --symlink-install --packages-select clew
 source install/setup.bash
 ```
 
 ## Running it
 
 ```bash
-ros2 launch fleet_coordinator coordinator.launch.py \
+ros2 launch clew coordinator.launch.py \
     mission_file:=config/sim_order.yaml \
     use_sim_time:=true \
     spooky.map_id:=test-scenario_simple \
@@ -122,7 +146,7 @@ Equivalent bare `ros2 run` form, e.g. for a one-off override the launch
 file doesn't expose:
 
 ```bash
-ros2 run fleet_coordinator coordinator_node --ros-args \
+ros2 run clew coordinator_node --ros-args \
     -p mission_file:=config/sim_order.yaml -p use_sim_time:=true \
     -p spooky.map_id:=test-scenario_simple -p initial_pose.publish:=true
 ```
@@ -155,7 +179,7 @@ else to touch):
 | `initial_pose.*` | — (individual params) | AMCL-seed publish flag + topic/frame templates |
 
 Full current defaults for all of them: `config/params.example.yaml`
-(commented out, safe to copy from) or `ros2 param list /fleet_coordinator`
+(commented out, safe to copy from) or `ros2 param list /clew`
 once it's running.
 
 ## Testing
@@ -164,10 +188,10 @@ once it's running.
 pytest              # from the repo root -- unit tests, no ROS2 or server needed
 ```
 
-Don't run a module inside `fleet_coordinator/` directly with `python3
-fleet_coordinator/foo.py` — its relative imports need the file loaded
+Don't run a module inside `clew/` directly with `python3
+clew/foo.py` — its relative imports need the file loaded
 *as part of* the package, which a direct script invocation never sets
-up. `python3 -m fleet_coordinator.foo` (from the repo root) does.
+up. `python3 -m clew.foo` (from the repo root) does.
 `pytest` works the same way only because `setup.cfg`'s `[tool:pytest]`
 section sets `pythonpath = .`; don't remove that assuming rootdir
 detection alone covers it.
@@ -188,29 +212,28 @@ profile without breaking on a machine with no Spooky running.
 
 ## Status / open questions
 
-- `dispatch.py`'s assumed action/topic names and pose-source topic
-  (`/{robot_id}/follow_path`, `/{robot_id}/amcl_pose`, ...) follow
-  standard nav2 convention but are unverified against a real Ranger/nav2
-  launch — override via `dispatch.*`/`initial_pose.*` parameters if a
-  real deployment differs. Same for whether a new `FollowPath` goal
-  cleanly preempts an in-flight one (assumed standard nav2 action-server
-  behaviour, not verified against a running `controller_server`).
+- **nav2 backend: tested and working**, in Isaac Sim and on three real
+  Ranger Mini robots (`FollowPath` preemption with a growing path prefix,
+  `SmoothPath`, per-robot AMCL). Default action/topic names follow
+  standard namespaced nav2 convention (`/{robot_id}/follow_path`,
+  `/{robot_id}/amcl_pose`, ...); override via `dispatch.*`/
+  `initial_pose.*` parameters if a deployment differs.
+- **EasyNavigation backend: not yet supported/tested.** The dispatch
+  layer is the only part that would need a second implementation; the
+  planning, gating and recovery logic is backend-agnostic.
 - No live reactive collision check underneath `ordering.py`'s proactive
-  gating yet, for when real execution deviates from what gating
-  predicted (mirrors `control-circuit`'s `PairwiseCollisionMonitor`, as
-  a backstop under release-gating rather than the only mechanism).
+  gating yet — a pairwise distance monitor as a backstop for when real
+  execution deviates from what gating predicted, not a replacement for
+  it. Each robot's own costmap/collision checking still applies.
 - The node runs on a single-threaded executor. `recovery.py`'s full-fleet
   replan is a synchronous multi-second HTTP call that freezes dispatch
   ticks/TF/action feedback for its duration — low-impact today (the
   fleet is already held/stopped by the time that call runs), but worth
   revisiting toward an async call (not a blanket multi-threaded-executor
   swap — this node has no locking around its shared state today, and
-  that would need auditing first) before real hardware or much larger
-  fleets.
-- Local planner backend choice per robot, and whether it runs inside a
-  full nav2 stack or as a fully custom node, are undecided
-- Whether mission intake ever needs to move off a static YAML file onto
-  a live source (a service call, a topic, a UI) — not needed yet.
+  that would need auditing first) before much larger fleets.
+- Mission intake is a static YAML file; a live source (service, topic,
+  or argOS) is the natural next step for iterative/real-time planning.
 - Whether Spooky should eventually produce smoother native output
   itself, removing the need for `dispatch.py`'s own `SmoothPath` step —
   flagged as a longer-term alternative, not pursued.

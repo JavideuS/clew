@@ -1,4 +1,4 @@
-"""Launch file for fleet_coordinator's coordinator_node.
+"""Launch file for clew's coordinator_node.
 
 Covers the four arguments actually worth varying run to run (mission_file,
 use_sim_time, spooky.map_id, initial_pose.publish). Everything else
@@ -12,7 +12,7 @@ explicit arguments below always win if a params_file also sets one of
 them.
 
 Usage:
-    ros2 launch fleet_coordinator coordinator.launch.py \\
+    ros2 launch clew coordinator.launch.py \\
         mission_file:=config/sim_order.yaml use_sim_time:=true \\
         spooky.map_id:=test-scenario_simple initial_pose.publish:=true
 """
@@ -37,7 +37,7 @@ def generate_launch_description() -> LaunchDescription:
                 "mission_file",
                 default_value=PathJoinSubstitution(
                     [
-                        FindPackageShare("fleet_coordinator"),
+                        FindPackageShare("clew"),
                         "config",
                         "mission.example.yaml",
                     ]
@@ -79,7 +79,7 @@ def generate_launch_description() -> LaunchDescription:
                 "params_file",
                 default_value=PathJoinSubstitution(
                     [
-                        FindPackageShare("fleet_coordinator"),
+                        FindPackageShare("clew"),
                         "config",
                         "params.example.yaml",
                     ]
@@ -91,9 +91,9 @@ def generate_launch_description() -> LaunchDescription:
                 ),
             ),
             Node(
-                package="fleet_coordinator",
+                package="clew",
                 executable="coordinator_node",
-                name="fleet_coordinator",
+                name="clew",
                 output="screen",
                 parameters=[
                     params_file,

@@ -7,7 +7,7 @@ import math
 
 import pytest
 
-from fleet_coordinator.geometry import (
+from clew.geometry import (
     angle_diff,
     distance,
     heading_to,

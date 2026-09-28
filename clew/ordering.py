@@ -12,13 +12,13 @@ the other waits, genuinely clear of it. Less concurrency than per-cell
 gating, but the hand-off pose is actually clear, which per-cell
 gating never guaranteed.
 
-Why this needs no MPC change: "waiting" isn't a mode the local planner has
+Why this needs no local-planner change: "waiting" isn't a mode the local planner has
 to implement, it's what naturally happens when the path it's tracking
 stops getting longer. released_path() returns a robot's currently-released
 path *prefix*, growing over time as gates open; dispatch.py republishes it
-as a continuous nav_msgs/Path each time it grows. A robot's MPC just keeps
-tracking whatever the latest Path is and comes to rest at its end --
-indistinguishable, from the MPC's point of view, from having reached a
+as a continuous nav_msgs/Path each time it grows. A robot's controller just
+keeps tracking whatever the latest Path is and comes to rest at its end --
+indistinguishable, from the controller's point of view, from having reached a
 real final goal. No
 stop/resume signal, no special "hold" state to add to the controller.
 
@@ -31,7 +31,7 @@ radius -- otherwise the symbolic plan already separates them in time and
 only a gross timing failure (which the dispatch retry cap surfaces) could
 bring them together. The safety guarantee still only holds *if* the
 chosen relative order is preserved in real execution -- which is the
-whole reason this gate exists, since per-robot MPC timing is never
+whole reason this gate exists, since per-robot controller timing is never
 pinned to the symbolic step pacing.
 """
 

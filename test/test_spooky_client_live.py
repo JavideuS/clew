@@ -18,8 +18,8 @@ import os
 import pytest
 import requests
 
-from fleet_coordinator.robot import Fleet
-from fleet_coordinator.spooky_client import SpookySettings, plan_fleet
+from clew.robot import Fleet
+from clew.spooky_client import SpookySettings, plan_fleet
 
 BASE_URL = os.environ.get("SPOOKY_BASE_URL", "http://localhost:8000")
 

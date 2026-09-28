@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import math
 
-from fleet_coordinator.path_poses import (
+from clew.path_poses import (
     dedupe_consecutive,
     derive_headings,
     nearest_index,
@@ -61,9 +61,9 @@ def test_derive_headings_partial_release_does_not_pin_last_point():
 
 
 def test_derive_headings_middle_points_use_tangent():
-    # Heading convention (matching control-circuit's cartesianPathToWaypoints):
-    # a middle point's heading is the *arrival* direction, the tangent from
-    # the previous point -- not a look-ahead to the next one.
+    # Heading convention: a middle point's heading is the *arrival*
+    # direction, the tangent from the previous point -- not a look-ahead to
+    # the next one.
     result = derive_headings(
         [(0, 0), (1, 0), (1, 1), (1, 2)], start_theta=0.0, goal_theta=0.0
     )

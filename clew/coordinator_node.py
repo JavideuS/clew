@@ -80,7 +80,7 @@ def load_dataclass_parameters(node: Node, prefix: str, cls: type[_DC]) -> _DC:
 
 class CoordinatorNode(Node):
     def __init__(self) -> None:
-        super().__init__("fleet_coordinator")
+        super().__init__("clew")
 
         # Set for real in _plan_fleet; referenced defensively before then.
         self.recovery: RecoveryManager | None = None

@@ -225,7 +225,7 @@ class ConvergenceGate:
     def _ingest_tf(self, msg: TFMessage, buf: Buffer, *, static: bool) -> None:
         setter = buf.set_transform_static if static else buf.set_transform
         for transform in msg.transforms:
-            setter(transform, "fleet_coordinator")
+            setter(transform, "clew")
 
     def _poll(self) -> None:
         if self._done:

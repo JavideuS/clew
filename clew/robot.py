@@ -7,9 +7,8 @@ priority, robot_radius, inflation, coordinate_format -- see spooky_client.py).
 A `Robot` carries a full `Pose2D` (with heading) for its start/goal, not
 just an (x, y) pair.
 Spooky itself never sees `theta` but the local planner downstream needs a real
-target heading, same as control-circuit pins the mission's exact start/goal
-poses back in after Spooky's response (`cartesianPathToWaypoints` in
-spooky.go) rather than trusting a grid-derived heading.
+target heading, so the mission's exact start/goal poses are pinned back in
+after Spooky's response rather than trusting a grid-derived heading.
 """
 
 from __future__ import annotations

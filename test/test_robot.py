@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from fleet_coordinator.robot import CoordinateFormat, Fleet, Pose2D, Robot
+from clew.robot import CoordinateFormat, Fleet, Pose2D, Robot
 
 MISSION_EXAMPLE = Path(__file__).parent.parent / "config" / "mission.example.yaml"
 

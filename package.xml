@@ -1,10 +1,10 @@
 <?xml version="1.0"?>
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
-  <name>fleet_coordinator</name>
+  <name>clew</name>
   <version>0.0.1</version>
   <description>
-    Decoupled-mode multi-robot fleet coordinator: calls Spooky for global
+    clew: decoupled multi-robot fleet coordinator. Calls Spooky for global
     planning, release-gates per-robot dispatch on Spooky's symbolic step
     ordering, and hands each robot's released waypoints to its own local
     planner.

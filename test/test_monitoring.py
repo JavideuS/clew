@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import pytest
 
-from fleet_coordinator.monitoring import (
+from clew.monitoring import (
     ConvergenceConfig,
     DeadlockConfig,
     StallConfig,

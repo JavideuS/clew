@@ -1,6 +1,6 @@
 from setuptools import find_packages, setup
 
-package_name = "fleet_coordinator"
+package_name = "clew"
 
 setup(
     name=package_name,
@@ -20,14 +20,14 @@ setup(
     maintainer="Javier Gonzalez Villasmil",
     maintainer_email="javi.rm2005@gmail.com",
     description=(
-        "Decoupled-mode multi-robot fleet coordinator: Spooky global "
+        "clew: decoupled multi-robot fleet coordinator. Spooky global "
         "planning + release-gated per-robot dispatch."
     ),
     license="Apache-2.0",
     tests_require=["pytest"],
     entry_points={
         "console_scripts": [
-            "coordinator_node = fleet_coordinator.coordinator_node:main",
+            "coordinator_node = clew.coordinator_node:main",
         ],
     },
 )

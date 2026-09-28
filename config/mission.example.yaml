@@ -1,5 +1,5 @@
 # Example mission file -- a YAML list of robot specs, loaded via
-# fleet_coordinator.robot.Fleet.from_yaml().
+# clew.robot.Fleet.from_yaml().
 
 # Each entry's keys match
 # - Robot's fields (see robot.py);
